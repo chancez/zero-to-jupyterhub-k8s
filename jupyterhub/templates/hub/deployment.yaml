@@ -235,6 +235,9 @@ spec:
             httpGet:
               path: {{ .Values.hub.baseUrl | trimSuffix "/" }}/hub/health
               port: http
+              {{- if .Values.hub.https.enabled }}
+              scheme: HTTPS
+              {{- end }}
           {{- end }}
           {{- if .Values.hub.readinessProbe.enabled }}
           readinessProbe:
@@ -243,4 +246,7 @@ spec:
             httpGet:
               path: {{ .Values.hub.baseUrl | trimSuffix "/" }}/hub/health
               port: http
+              {{- if .Values.hub.https.enabled }}
+              scheme: HTTPS
+              {{- end }}
           {{- end }}

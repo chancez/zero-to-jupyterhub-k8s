@@ -3,14 +3,16 @@ import re
 import sys
 
 from tornado.httpclient import AsyncHTTPClient
-from kubernetes import client
+
 from jupyterhub.utils import url_path_join
+from kubernetes import client
 
 # Make sure that modules placed in the same directory as the jupyterhub config are added to the pythonpath
 configuration_directory = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, configuration_directory)
 
 from z2jh import get_config, set_config_if_not_none
+
 
 # Configure JupyterHub to use the curl backend for making HTTP requests,
 # rather than the pure-python implementations. The default one starts
@@ -372,45 +374,6 @@ set_config_if_not_none(c.Authenticator, 'whitelist', 'auth.whitelist.users')
 
 c.JupyterHub.services = []
 
-if get_config('cull.enabled', False):
-    cull_cmd = [
-        'python3',
-        '-m',
-        'jupyterhub_idle_culler'
-    ]
-    base_url = c.JupyterHub.get('base_url', '/')
-    cull_cmd.append(
-        '--url=http://localhost:8081' + url_path_join(base_url, 'hub/api')
-    )
-
-    cull_timeout = get_config('cull.timeout')
-    if cull_timeout:
-        cull_cmd.append('--timeout=%s' % cull_timeout)
-
-    cull_every = get_config('cull.every')
-    if cull_every:
-        cull_cmd.append('--cull-every=%s' % cull_every)
-
-    cull_concurrency = get_config('cull.concurrency')
-    if cull_concurrency:
-        cull_cmd.append('--concurrency=%s' % cull_concurrency)
-
-    if get_config('cull.users'):
-        cull_cmd.append('--cull-users')
-
-    if get_config('cull.removeNamedServers'):
-        cull_cmd.append('--remove-named-servers')
-
-    cull_max_age = get_config('cull.maxAge')
-    if cull_max_age:
-        cull_cmd.append('--max-age=%s' % cull_max_age)
-
-    c.JupyterHub.services.append({
-        'name': 'cull-idle',
-        'admin': True,
-        'command': cull_cmd,
-    })
-
 for name, service in get_config('hub.services', {}).items():
     # jupyterhub.services is a list of dicts, but
     # in the helm chart it is a dict of dicts for easier merged-config
@@ -492,3 +455,58 @@ if isinstance(extra_config, str):
 for key, config_py in sorted(extra_config.items()):
     print("Loading extra config: %s" % key)
     exec(config_py)
+
+if get_config('cull.enabled', False):
+    cull_cmd = [
+        'python3',
+        '-m',
+        'jupyterhub_idle_culler'
+    ]
+    base_url = c.JupyterHub.get('base_url', '/')
+
+    https_enabled = get_config('hub.https.enabled', False)
+    protocol = "https" if https_enabled else "http"
+
+    cull_cmd.append(
+        '--url=' + protocol + '://localhost:8081' + url_path_join(base_url, 'hub/api')
+    )
+
+    if https_enabled:
+        cull_cmd.append('--ssl-enabled')
+
+        # attempt to load override if set in extraConfig section
+        if isinstance(c.JupyterHub.internal_certs_location, str):
+            internal_certs_location = c.JupyterHub.internal_certs_location
+        else:
+            internal_certs_location = "/srv/jupyterhub/internal-ssl"
+
+        if internal_certs_location:
+            cull_cmd.append('--internal-certs-location=%s' % internal_certs_location)
+
+    cull_timeout = get_config('cull.timeout')
+    if cull_timeout:
+        cull_cmd.append('--timeout=%s' % cull_timeout)
+
+    cull_every = get_config('cull.every')
+    if cull_every:
+        cull_cmd.append('--cull-every=%s' % cull_every)
+
+    cull_concurrency = get_config('cull.concurrency')
+    if cull_concurrency:
+        cull_cmd.append('--concurrency=%s' % cull_concurrency)
+
+    if get_config('cull.users'):
+        cull_cmd.append('--cull-users')
+
+    if get_config('cull.removeNamedServers'):
+        cull_cmd.append('--remove-named-servers')
+
+    cull_max_age = get_config('cull.maxAge')
+    if cull_max_age:
+        cull_cmd.append('--max-age=%s' % cull_max_age)
+
+    c.JupyterHub.services.append({
+        'name': 'cull-idle',
+        'admin': True,
+        'command': cull_cmd,
+    })
