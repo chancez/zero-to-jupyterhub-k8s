@@ -1,0 +1,33 @@
+variables:
+  IMAGE_REPO: 216842466810.dkr.ecr.us-west-1.amazonaws.com/jupyterhub-k8s
+  DOCKERFILE: images/hub/Dockerfile
+  DOCKER_CONTEXT: images/hub
+  DOCKER_DRIVER: overlay2
+
+.docker:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache python3 py-pip git
+    - pip install awscli
+    - aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin "${IMAGE_REPO}"
+  script:
+    - docker pull "$IMAGE_REPO:$CI_COMMIT_BEFORE_SHA" || true
+    - docker build --cache-from "$IMAGE_REPO:$CI_COMMIT_BEFORE_SHA" --cache-from "$IMAGE_REPO:latest" --tag "$IMAGE_REPO:$CI_COMMIT_SHA" -f "$DOCKERFILE" "$DOCKER_CONTEXT"
+    - docker push "$IMAGE_REPO:$CI_COMMIT_SHA"
+  tags:
+    - ec2-docker
+
+docker-build-master:
+  extends: .docker
+  only:
+    refs:
+      - master
+
+docker-build:
+  extends: .docker
+  except:
+    refs:
+      - master
