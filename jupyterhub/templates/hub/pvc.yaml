@@ -1,4 +1,3 @@
-{{- if eq .Values.hub.db.type "sqlite-pvc" -}}
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -22,4 +21,3 @@ spec:
   resources:
     requests:
       storage: {{ .Values.hub.db.pvc.storage | quote }}
-{{- end }}
