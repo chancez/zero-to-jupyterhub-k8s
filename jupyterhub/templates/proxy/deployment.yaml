@@ -74,6 +74,7 @@ spec:
             - --client-ssl-ca=/etc/chp/internal/{{ .Values.proxy.https.internalSecret.client.ca }}
             - --client-ssl-request-cert
             - --client-ssl-reject-unauthorized
+            - --change-origin
             {{- else }}
             - --default-target=http://$(HUB_SERVICE_HOST):$(HUB_SERVICE_PORT)
             - --error-target=http://$(HUB_SERVICE_HOST):$(HUB_SERVICE_PORT)/hub/error

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import re
 import sys
@@ -13,6 +14,7 @@ sys.path.insert(0, configuration_directory)
 
 from z2jh import get_config, set_config_if_not_none
 
+namespace = os.getenv("POD_NAMESPACE", "default")
 
 # Configure JupyterHub to use the curl backend for making HTTP requests,
 # rather than the pure-python implementations. The default one starts
@@ -23,8 +25,8 @@ AsyncHTTPClient.configure("tornado.curl_httpclient.CurlAsyncHTTPClient")
 c.JupyterHub.spawner_class = 'kubespawner.KubeSpawner'
 
 # Connect to a proxy running in a different pod
-c.ConfigurableHTTPProxy.api_url = 'http://{}:{}'.format(os.environ['PROXY_API_SERVICE_HOST'], int(os.environ['PROXY_API_SERVICE_PORT']))
 c.ConfigurableHTTPProxy.should_start = False
+
 
 # Do not shut down user pods when hub is restarted
 c.JupyterHub.cleanup_servers = False
@@ -37,6 +39,29 @@ c.JupyterHub.tornado_settings = {
     'slow_spawn_timeout': 0,
 }
 
+# Handle SSL options
+https_enabled = get_config('hub.https.enabled', False)
+protocol = "https" if https_enabled else "http"
+
+c.ConfigurableHTTPProxy.api_url = f"{protocol}://proxy-api.{namespace}.svc.cluster.local:8001"
+c.JupyterHub.hub_connect_url = f"{protocol}://hub.{namespace}.svc.cluster.local:8081"
+
+c.JupyterHub.bind_url = f"{protocol}://0.0.0.0:8081"
+c.JupyterHub.hub_bind_url = f"{protocol}://0.0.0.0:8081"
+
+c.JupyterHub.internal_ssl = https_enabled
+c.JupyterHub.internal_certs_location = '/srv/jupyterhub-internal-ssl/internal-ssl'
+
+# Set default trusted_alt_names even if internal_ssl isn't enabled, so that we
+# can generate certificates with the correct SANs prior to enabling it on the
+# hub pod.
+c.JupyterHub.trusted_alt_names = [
+  "IP:127.0.0.1",
+  "DNS:localhost",
+  f"DNS:hub.{namespace}.svc.cluster.local",
+  f"DNS:proxy-api.{namespace}.svc.cluster.local",
+  f"DNS:proxy-public.{namespace}.svc.cluster.local",
+]
 
 def camelCaseify(s):
     """convert snake_case to camelCase
@@ -76,8 +101,8 @@ for trait, cfg_key in (
         cfg_key = camelCaseify(trait)
     set_config_if_not_none(c.JupyterHub, trait, 'hub.' + cfg_key)
 
-c.JupyterHub.ip = os.environ['PROXY_PUBLIC_SERVICE_HOST']
-c.JupyterHub.port = int(os.environ['PROXY_PUBLIC_SERVICE_PORT'])
+c.JupyterHub.ip = "0.0.0.0"
+c.JupyterHub.port = 8000
 
 # the hub should listen on all interfaces, so the proxy can access it
 c.JupyterHub.hub_ip = '0.0.0.0'
@@ -100,7 +125,7 @@ release = get_config('Release.Name')
 if release:
     common_labels['release'] = release
 
-c.KubeSpawner.namespace = os.environ.get('POD_NAMESPACE', 'default')
+c.KubeSpawner.namespace = namespace
 
 # Max number of consecutive failures before the Hub restarts itself
 # requires jupyterhub 0.9.2
@@ -247,10 +272,6 @@ elif storage_type == 'static':
 
 c.KubeSpawner.volumes.extend(get_config('singleuser.storage.extraVolumes', []))
 c.KubeSpawner.volume_mounts.extend(get_config('singleuser.storage.extraVolumeMounts', []))
-
-# Gives spawned containers access to the API of the hub
-c.JupyterHub.hub_connect_ip = os.environ['HUB_SERVICE_HOST']
-c.JupyterHub.hub_connect_port = int(os.environ['HUB_SERVICE_PORT'])
 
 # Allow switching authenticators easily
 auth_type = get_config('auth.type')
@@ -464,24 +485,23 @@ if get_config('cull.enabled', False):
     ]
     base_url = c.JupyterHub.get('base_url', '/')
 
-    https_enabled = get_config('hub.https.enabled', False)
-    protocol = "https" if https_enabled else "http"
+    # https_enabled = get_config('hub.https.enabled', False)
 
     cull_cmd.append(
         '--url=' + protocol + '://localhost:8081' + url_path_join(base_url, 'hub/api')
     )
 
-    if https_enabled:
-        cull_cmd.append('--ssl-enabled')
+    # if https_enabled:
+    #     cull_cmd.append('--ssl-enabled')
 
-        # attempt to load override if set in extraConfig section
-        if isinstance(c.JupyterHub.internal_certs_location, str):
-            internal_certs_location = c.JupyterHub.internal_certs_location
-        else:
-            internal_certs_location = "/srv/jupyterhub/internal-ssl"
+    #     # attempt to load override if set in extraConfig section
+    #     if isinstance(c.JupyterHub.internal_certs_location, str):
+    #         internal_certs_location = c.JupyterHub.internal_certs_location
+    #     else:
+    #         internal_certs_location = "/srv/jupyterhub/internal-ssl"
 
-        if internal_certs_location:
-            cull_cmd.append('--internal-certs-location=%s' % internal_certs_location)
+    #     if internal_certs_location:
+    #         cull_cmd.append('--internal-certs-location=%s' % internal_certs_location)
 
     cull_timeout = get_config('cull.timeout')
     if cull_timeout:
