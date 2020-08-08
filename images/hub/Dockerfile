@@ -62,7 +62,12 @@ RUN PYCURL_SSL_LIBRARY=openssl pip3 install --no-cache-dir \
 
 # Use custom version of kubespawner with internal_ssl support
 RUN pip uninstall -y jupyterhub-kubespawner && pip install git+https://github.com/chancez/kubespawner.git@internal-ssl#egg=jupyterhub-kubespawner
-RUN pip uninstall -y oauthenticator && pip install git+https://github.com/chancez/oauthenticator.git@debug_auth#egg=oauthenticator
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        nodejs=8.10.0~dfsg-2ubuntu0.2 nodejs-dev=8.10.0~dfsg-2ubuntu0.2 npm \
+    && \
+    apt-get purge && apt-get clean
+RUN pip uninstall -y jupyterhub && pip install git+https://github.com/chancez/jupyterhub.git@fix_ssl_http_client#egg=jupyterhub
 
 WORKDIR /srv/jupyterhub
 
